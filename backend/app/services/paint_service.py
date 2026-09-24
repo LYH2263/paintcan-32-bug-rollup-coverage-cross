@@ -31,7 +31,6 @@ class PaintService:
 
     def _hydrate_run(self, row):
         import json
-        from app.services.rollup_cross import hydrate_swap
         item = dict(row)
         for key in ("input_json", "result_json"):
             raw = item.get(key)
@@ -39,8 +38,6 @@ class PaintService:
                 item[key.replace("_json", "")] = json.loads(raw) if raw else None
             except (ValueError, TypeError):
                 item[key.replace("_json", "")] = None
-        if item.get("result"):
-            item["result"] = hydrate_swap(item["result"])
         return item
 
     def _calc_room(self, room_id, coverage, coats):
@@ -93,8 +90,8 @@ class PaintService:
                 **calc,
             })
 
-        from app.services.rollup_cross import first_room_total_liters
-        total_liters, total_net, _, _ = first_room_total_liters(rows)
+        from app.services.rollup_cross import sum_room_totals
+        total_liters, total_net = sum_room_totals(rows)
         result = {
             "rooms": rows,
             "total_gross_m2": round(sum(x["gross_m2"] for x in rows), 2),
