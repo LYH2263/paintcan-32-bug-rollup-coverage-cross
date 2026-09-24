@@ -31,7 +31,6 @@ class PaintService:
 
     def _hydrate_run(self, row):
         import json
-        from app.services.rollup_cross import hydrate_swap
         item = dict(row)
         for key in ("input_json", "result_json"):
             raw = item.get(key)
@@ -39,8 +38,7 @@ class PaintService:
                 item[key.replace("_json", "")] = json.loads(raw) if raw else None
             except (ValueError, TypeError):
                 item[key.replace("_json", "")] = None
-        if item.get("result"):
-            item["result"] = hydrate_swap(item["result"])
+        # 分房明细直接回放落库快照，不做任何参数改写，避免编号与涂布率/升数串房
         return item
 
     def _calc_room(self, room_id, coverage, coats):
@@ -93,13 +91,13 @@ class PaintService:
                 **calc,
             })
 
-        from app.services.rollup_cross import first_room_total_liters
-        total_liters, total_net, _, _ = first_room_total_liters(rows)
+        # 合计 = 各房按各自涂布率/遍数算得升数之和，不得拿某一房的参数套总净面积
+        total_liters = round(sum(float(x["liters"]) for x in rows), 2)
         result = {
             "rooms": rows,
             "total_gross_m2": round(sum(x["gross_m2"] for x in rows), 2),
             "total_openings_m2": round(sum(x["openings_m2"] for x in rows), 2),
-            "total_net_m2": total_net,
+            "total_net_m2": round(sum(float(x["net_m2"]) for x in rows), 2),
             "total_liters": total_liters,
         }
         payload = {"rooms": [

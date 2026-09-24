@@ -111,3 +111,53 @@ def test_history_hydrates_json(svc):
     item = next(x for x in hist if x["id"] == r["run_id"])
     assert item["result"]["total_liters"] == r["total_liters"]
     assert item["input"]["rooms"][0]["room_id"] == 1
+
+
+def test_persisted_history_detail_matches_response(svc):
+    """落库后按编号打开，分房的编号/涂布率/遍数/升数必须与当次回包完全一致，不得串房。"""
+    r = svc.estimate_many([
+        {"room_id": 1, "coats": 2, "coverage": 8},
+        {"room_id": 2, "coats": 1, "coverage": 10},
+    ], True)
+    hist = svc.history(50)
+    item = next(x for x in hist if x["id"] == r["run_id"])
+    saved_rooms = item["result"]["rooms"]
+    assert [x["room_id"] for x in saved_rooms] == [1, 2]
+    for saved, live in zip(saved_rooms, r["rooms"]):
+        assert saved["room_id"] == live["room_id"]
+        assert saved["coats"] == live["coats"]
+        assert saved["coverage"] == live["coverage"]
+        assert saved["liters"] == live["liters"]
+        assert saved["net_m2"] == live["net_m2"]
+    assert item["result"]["total_liters"] == r["total_liters"]
+
+    # 具体数值：房1 46.41*2/8=11.6，房2 33.93/10=3.39，合计 14.99
+    assert [(x["coats"], x["coverage"], x["liters"]) for x in saved_rooms] == [
+        (2, 8.0, 11.6), (1, 10.0, 3.39),
+    ]
+    assert r["total_liters"] == 14.99
+
+
+def test_consecutive_batches_keep_own_params(svc):
+    """连续估两组分房参数不同的房间，新合计不得带上一组的涂布率。"""
+    batch_a = svc.estimate_many([
+        {"room_id": 1, "coats": 2, "coverage": 8},
+        {"room_id": 2, "coats": 2, "coverage": 8},
+    ], True)
+    batch_b = svc.estimate_many([
+        {"room_id": 1, "coats": 1, "coverage": 10},
+        {"room_id": 2, "coats": 1, "coverage": 10},
+    ], True)
+
+    assert batch_a["total_liters"] == round(11.6 + 8.48, 2)
+    # 房1 在 B 组须用 B 组参数：46.41/10=4.64，房2：33.93/10=3.39
+    assert [x["liters"] for x in batch_b["rooms"]] == [4.64, 3.39]
+    assert batch_b["total_liters"] == round(4.64 + 3.39, 2)
+
+    hist = svc.history(50)
+    by_id = {x["id"]: x for x in hist}
+    for r in (batch_a, batch_b):
+        saved = by_id[r["run_id"]]["result"]
+        assert [(x["room_id"], x["coats"], x["coverage"], x["liters"]) for x in saved["rooms"]] == \
+               [(x["room_id"], x["coats"], x["coverage"], x["liters"]) for x in r["rooms"]]
+        assert saved["total_liters"] == r["total_liters"]

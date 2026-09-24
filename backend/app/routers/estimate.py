@@ -9,7 +9,7 @@ router = APIRouter()
 
 def _normalize_items(body: EstimateRequest):
     """返回 [{"room_id","coats","coverage"}]；未选任何房间时返回 None 走旧单房。"""
-    if body.rooms:
+    if body.rooms is not None:
         return [{"room_id": r.room_id, "coats": r.coats, "coverage": r.coverage} for r in body.rooms]
     if body.room_ids is not None:
         return [{"room_id": rid, "coats": body.coats, "coverage": body.coverage} for rid in body.room_ids]
